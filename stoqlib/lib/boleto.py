@@ -765,6 +765,112 @@ class BankSantander(BankInfo):
                                       self.ios,
                                       self.carteira)
 
+@register_bank
+class BankBancoob(BankInfo):
+    description = 'Bancoob / Sicoob'
+    bank_number = 1
+    logo = 'logo_bancoob.jpg'
+    options = {u'convenio': BILL_OPTION_CUSTOM,
+               u'agencia': BILL_OPTION_BANK_BRANCH,
+               u'conta': BILL_OPTION_BANK_BRANCH,
+               u'especie_documento': BILL_OPTION_CUSTOM}
+
+    validate_field_func = 'modulo11'
+    validate_field_dv_10 = 'x'
+
+    def __init__(self, **kwargs):
+        if not 'carteira' in kwargs:
+            kwargs['carteira'] = '18'
+
+        convenio = kwargs.pop('convenio', None)
+        if convenio:
+            self.len_convenio = len(convenio)
+            self.convenio = convenio
+        else:
+            self.len_convenio = 7
+            self.convenio = ''
+
+        self.format_nnumero = 1
+        if 'format_nnumero' in kwargs:
+            self.format_nnumero = int(kwargs.pop('format_nnumero'))
+        super(BankBancoob, self).__init__(**kwargs)
+
+    def format_nosso_numero(self):
+        return "%s-%s" % (
+            self.nosso_numero,
+            self.dv_nosso_numero
+        )
+
+    # Nosso número de até 8 dígitos - 2 digitos para o ano e outros 6 numeros sequencias por ano 
+
+    @property
+    def nosso_numero(self):
+        return self.convenio + self._nosso_numero
+
+    @nosso_numero.setter
+    def nosso_numero(self, val):
+        val = str(val)
+        if self.len_convenio == 4:
+            nn = val.zfill(7)
+        if self.len_convenio == 6:
+            if self.format_nnumero == 1:
+                nn = val.zfill(5)
+            elif self.format_nnumero == 2:
+                nn = val.zfill(17)
+        elif self.len_convenio == 7:
+            nn = val.zfill(10)
+        elif self.len_convenio == 8:
+            nn = val.zfill(9)
+        self._nosso_numero = nn
+
+    @property
+    def convenio(self):
+        return self._convenio
+
+    @convenio.setter
+    def convenio(self, val):
+        self._convenio = str(val).ljust(self.len_convenio, '0')
+
+    @property
+    def agencia_conta(self):
+        return "%s-%s / %s-%s" % (
+            self.agencia,
+            modulo11(self.agencia),
+            self.conta,
+            modulo11(self.conta)
+        )
+
+    @property
+    def dv_nosso_numero(self):
+        return modulo11(self.nosso_numero)
+
+    agencia = custom_property('agencia', 4)
+    conta = custom_property('conta', 8)
+
+    @property
+    def campo_livre(self):
+        if self.len_convenio is 7:
+            return "%6s%s%s" % ('000000',
+                                self.nosso_numero,
+                                self.carteira)
+
+    @classmethod
+    def validate_option(cls, option, value):
+        if option == 'convenio':
+            if value == '':
+                # TRANSLATORS: Do not translate 'Convenio'
+                raise BoletoException(_('Convenio cannot be empty'))
+            try:
+                int(value)
+            except ValueError:
+                # TRANSLATORS: Do not translate 'Convenio'
+                raise BoletoException(_("Convenio must be a number"))
+            if len(value) is not 7:
+                raise BoletoException(
+                    # TRANSLATORS: Do not translate 'Convenio'
+                    _("Convenio length must be 7. Try filing it with "
+                      "'0's at the left."))
+
 
 def get_all_banks():
     return _banks
